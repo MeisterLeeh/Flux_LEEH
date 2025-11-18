@@ -4,7 +4,7 @@ import requests
 from urllib.parse import quote
 import os
 
-app = Flask(__name__, static_folder='../public', static_url_path='')
+app = Flask(__name__, static_folder='.', static_url_path='')
 
 # Serve the main page
 @app.route('/')
