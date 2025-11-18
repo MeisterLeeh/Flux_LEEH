@@ -72,15 +72,14 @@ def preview():
         return "No ID", 400
     try:
         data = requests.get(f"{PIPED}/streams/{vid}", timeout=10).json()
-        streams = data['audioStreams'] if typ == 'audio' else data['videoStreams']
-        if not streams:
-            return "No stream found", 500
+        streams = data.get('audioStreams') if typ == 'audio' else data.get('videoStreams')
+        if not streams or len(streams) == 0:
+            return "No stream", 500
         best = max(streams, key=lambda x: x.get('bitrate', 0) if typ == 'audio' else int(x.get('quality', '0p').replace('p', '')))
         return redirect(best['url'])
     except Exception as e:
         print("Preview error:", e)
         return "Preview failed", 500
-
 
 # DOWNLOAD → PIPED (WITH PROPER FILENAME)
 @app.route('/download')
@@ -95,11 +94,14 @@ def download():
         ext = 'mp3' if fmt == 'mp3' else 'mp4'
 
         if fmt == 'mp3':
-            best = max(data['audioStreams'], key=lambda x: x.get('bitrate', 0))
+            # FIXED: audioStreams → with "s"
+            streams = data['audioStreams']
+            best = max(streams, key=lambda x: x.get('bitrate', 0))
         else:
             # Prefer streams with audio
             with_audio = [s for s in data['videoStreams'] if not s.get('videoOnly', False)]
-            best = max(with_audio or data['videoStreams'], key=lambda x: int(x.get('quality', '0p').replace('p', '')))
+            target = with_audio or data['videoStreams']
+            best = max(target, key=lambda x: int(x.get('quality', '0p').replace('p', '')))
 
         final_url = f"{best['url']}&title={quote(title)}.{ext}"
         return redirect(final_url)
@@ -107,7 +109,6 @@ def download():
     except Exception as e:
         print("Download error:", e)
         return "Download failed – try again", 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 3000))
