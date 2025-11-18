@@ -1,15 +1,20 @@
-from flask import Flask, request, jsonify, send_file, Response
+from flask import Flask, request, jsonify, send_file, Response, send_from_directory
 import yt_dlp
-import requests
-from urllib.parse import quote
 import os
+from urllib.parse import quote
+import requests
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# Serve the main page
+# SERVE FRONTEND FILES — THIS IS THE FINAL FIX
 @app.route('/')
-def index():
-    return app.send_static_file('index.html')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('.', path)
+
 
 # ================= SEARCH =================
 @app.route('/search')
