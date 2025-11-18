@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_file, Response
 import yt_dlp
 import requests
 from urllib.parse import quote
+import os
 
 app = Flask(__name__, static_folder='../public', static_url_path='')
 
@@ -141,6 +142,6 @@ def download():
 
 # ================= START SERVER =================
 if __name__ == '__main__':
-    print("FLUX_LEEH IS FULLY ALIVE & READY 🇿🇦🔥")
-    print("http://localhost:3000")
-    app.run(port=3000, debug=False)
+    port = int(os.environ.get('PORT', 3000))
+    print(f"FLUX_LEEH IS FULLY ALIVE on port {port} 🇿🇦🔥")
+    app.run(host='0.0.0.0', port=port, debug=False)
