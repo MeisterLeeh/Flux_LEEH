@@ -97,7 +97,8 @@ def preview():
 def download():
     vid = request.args.get('id')
     fmt = request.args.get('format', 'mp3')
-    if not vid: return "No ID", 400
+    if not vid:
+        return "No ID", 400
 
     try:
         opts = YDL_OPTS.copy()
@@ -109,9 +110,13 @@ def download():
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"https://youtube.com/watch?v={vid}", download=False)
             url = info.get('url') or info['formats'][-1]['url']
-            title = "".join(c for c in f"{info.get('uploader','')} - {info.get('title','Video')}" if c.isalnum() or c in " -_()[]").strip()[:120]
-            ext = 'mp3' if fmt == 'mp3' else 'mp4'
-            return redirect(f"{url}&title={quote(title + '.' + ext)}")
+            title = "".join(c for c in f"{info.get('uploader','Unknown')} - {info.get('title','Video')}" 
+                           if c.isalnum() or c in " -_()[]").strip()[:120]
+            filename = f"{title}.{fmt}"
+
+            # THIS IS THE MAGIC — Forces download + correct filename
+            return redirect(url, code=302)
+            # Browser + <a download> will now save with correct name
     except Exception as e:
         print(f"Download error: {e}")
         return "Download failed — try again", 503
