@@ -7,7 +7,7 @@ import logging
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# WORKING INVIDIOUS INSTANCES — NOV 2025 (tested on Render 10 mins ago)
+
 INVIDIOUS = [
     "https://yt.drgnz.club",
     "https://invidious.tiekoetter.com",
