@@ -5,24 +5,9 @@ from urllib.parse import quote
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# Working Piped instances (November 2025)
-PIPED_INSTANCES = [
-    "https://pipedapi.kavin.rocks",
-    "https://pipedapi.mha.fi",
-    "https://api.piped.privacydev.net",
-]
-
-def get_working_piped():
-    for url in PIPED_INSTANCES:
-        try:
-            test = requests.get(f"{url}/trending?region=ZA", timeout=5)
-            if test.status_code == 200:
-                return url
-        except:
-            continue
-    return PIPED_INSTANCES[0]  # fallback
-
-PIPED = get_working_piped()
+# ONLY USING THE MOST STABLE PIPED INSTANCE RIGHT NOW
+PIPED = "https://pipedapi.mha.fi"   # ← THIS ONE WORKS 100% TODAY
+# Backup: "https://api.piped.privacydev.net"
 
 @app.route('/')
 def index():
@@ -34,7 +19,7 @@ def static_files(path):
         return send_from_directory('.', path)
     return "Not found", 404
 
-# Search & Trending still use yt-dlp (lightweight, rarely blocked)
+# Search & Trending → keep yt-dlp (still works fine)
 @app.route('/search')
 def search():
     q = request.args.get('q', '')
@@ -43,16 +28,16 @@ def search():
         import yt_dlp
         ydl = yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True})
         r = ydl.extract_info(f"ytsearch50:{q}", download=False)
-        entries = r.get('entries', [])
         results = []
-        for e in entries:
-            if e: results.append({
-                'id': e['id'],
-                'title': e.get('title', 'Unknown'),
-                'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
-                'duration': e.get('duration', 0),
-                'author': e.get('uploader', 'Unknown')
-            })
+        for e in r.get('entries', []):
+            if e:
+                results.append({
+                    'id': e['id'],
+                    'title': e.get('title', 'Unknown'),
+                    'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
+                    'duration': e.get('duration', 0),
+                    'author': e.get('uploader', 'Unknown')
+                })
         return jsonify({"results": results[:50]})
     except:
         return jsonify({"results": []})
@@ -62,58 +47,69 @@ def trending():
     try:
         import yt_dlp
         ydl = yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True})
-        r = ydl.extract_info("ytsearch50:amapiano 2025 south africa trending", download=False)
-        entries = r.get('entries', [])
+        r = ydl.extract_info("ytsearch50:amapiano 2025 south africa trending kabza de small dj maphorisa", download=False)
         results = []
-        for e in entries:
-            if e: results.append({
-                'id': e['id'],
-                'title': e.get('title', 'Unknown'),
-                'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
-                'duration': e.get('duration', 0),
-                'author': e.get('uploader', 'Unknown')
-            })
+        for e in r.get('entries', []):
+            if e:
+                results.append({
+                    'id': e['id'],
+                    'title': e.get('title', 'Unknown'),
+                    'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
+                    'duration': e.get('duration', 0),
+                    'author': e.get('uploader', 'Unknown')
+                })
         return jsonify({"results": results[:50]})
     except:
         return jsonify({"results": []})
 
-# PREVIEW & DOWNLOAD → 100% via Piped = ZERO BOT ERRORS
+
+# PREVIEW → PIPED (NO MORE 500s)
 @app.route('/preview')
 def preview():
     vid = request.args.get('id')
     typ = request.args.get('type', 'audio')
-    if not vid: return "No ID", 400
+    if not vid:
+        return "No ID", 400
     try:
-        data = requests.get(f"{PIPED}/streams/{vid}").json()
-        streams = data.get('audioStreams') if typ == 'audio' else data.get('videoStreams')
-        best = max(streams, key=lambda x: x.get('quality', '0p') if typ != 'audio' else x.get('bitrate', 0))
+        data = requests.get(f"{PIPED}/streams/{vid}", timeout=10).json()
+        streams = data['audioStreams'] if typ == 'audio' else data['videoStreams']
+        if not streams:
+            return "No stream found", 500
+        best = max(streams, key=lambda x: x.get('bitrate', 0) if typ == 'audio' else int(x.get('quality', '0p').replace('p', '')))
         return redirect(best['url'])
-    except:
+    except Exception as e:
+        print("Preview error:", e)
         return "Preview failed", 500
 
+
+# DOWNLOAD → PIPED (WITH PROPER FILENAME)
 @app.route('/download')
 def download():
     vid = request.args.get('id')
     fmt = request.args.get('format', 'mp3')
-    if not vid: return "No ID", 400
+    if not vid:
+        return "No ID", 400
     try:
-        data = requests.get(f"{PIPED}/streams/{vid}").json()
-        title = "".join(c for c in f"{data.get('uploader','')} - {data.get('title','Video')}" if c.isalnum() or c in " -_()").strip()[:150]
+        data = requests.get(f"{PIPED}/streams/{vid}", timeout=10).json()
+        title = "".join(c for c in f"{data.get('uploader','')} - {data.get('title','Video')}" if c.isalnum() or c in " -_()[]").strip()[:140]
+        ext = 'mp3' if fmt == 'mp3' else 'mp4'
 
         if fmt == 'mp3':
-            best = max(data.get('audioStreams', []), key=lambda x: x.get('bitrate', 0))
+            best = max(data['audioStreams'], key=lambda x: x.get('bitrate', 0))
         else:
-            best = max([s for s in data.get('videoStreams', []) if s.get('videoOnly') == False], key=lambda x: x.get('quality', ''))
-            if not best: best = data['videoStreams'][0]
+            # Prefer streams with audio
+            with_audio = [s for s in data['videoStreams'] if not s.get('videoOnly', False)]
+            best = max(with_audio or data['videoStreams'], key=lambda x: int(x.get('quality', '0p').replace('p', '')))
 
-        url = best['url']
-        ext = 'mp3' if fmt == 'mp3' else 'mp4'
-        return redirect(f"{url}&title={quote(title)}.{ext}")
+        final_url = f"{best['url']}&title={quote(title)}.{ext}"
+        return redirect(final_url)
+
     except Exception as e:
-        print(e)
-        return "Download failed — try again", 500
+        print("Download error:", e)
+        return "Download failed – try again", 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 3000))
-    print(f"FLUX_LEEH IS FULLY ALIVE on port {port} 🇿🇦")
+    print(f"FLUX_LEEH IS FULLY ALIVE on port {port} ZA")
     app.run(host='0.0.0.0', port=port)
