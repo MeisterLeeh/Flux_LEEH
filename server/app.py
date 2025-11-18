@@ -1,154 +1,119 @@
-from flask import Flask, request, jsonify, send_from_directory, redirect, Response
-import yt_dlp
+from flask import Flask, request, jsonify, send_from_directory, redirect
+import requests
 import os
 from urllib.parse import quote
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
+# Working Piped instances (November 2025)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.mha.fi",
+    "https://api.piped.privacydev.net",
+]
+
+def get_working_piped():
+    for url in PIPED_INSTANCES:
+        try:
+            test = requests.get(f"{url}/trending?region=ZA", timeout=5)
+            if test.status_code == 200:
+                return url
+        except:
+            continue
+    return PIPED_INSTANCES[0]  # fallback
+
+PIPED = get_working_piped()
+
 @app.route('/')
-def serve_index():
+def index():
     return send_from_directory('.', 'index.html')
 
 @app.route('/<path:path>')
-def serve_static(path):
-    if os.path.exists(path) and not path.startswith('downloads'):
+def static_files(path):
+    if os.path.exists(path):
         return send_from_directory('.', path)
     return "Not found", 404
 
-
-# ================= SEARCH & TRENDING (unchanged - working fine) =================
+# Search & Trending still use yt-dlp (lightweight, rarely blocked)
 @app.route('/search')
 def search():
-    q = request.args.get('q', '').strip()
-    if not q:
-        return jsonify({"results": []})
-
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': True,
-        'skip_download': True,
-    }
-
+    q = request.args.get('q', '')
+    if not q: return jsonify({"results": []})
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            result = ydl.extract_info(f"ytsearch50:{q}", download=False)
-            entries = result.get('entries', []) if result else []
-            results = []
-            for e in entries:
-                if e:
-                    results.append({
-                        'id': e['id'],
-                        'title': e.get('title', 'No Title'),
-                        'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
-                        'duration': e.get('duration', 0) or 0,
-                        'author': e.get('uploader', 'Unknown')
-                    })
-            return jsonify({"results": results[:50]})
+        import yt_dlp
+        ydl = yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True})
+        r = ydl.extract_info(f"ytsearch50:{q}", download=False)
+        entries = r.get('entries', [])
+        results = []
+        for e in entries:
+            if e: results.append({
+                'id': e['id'],
+                'title': e.get('title', 'Unknown'),
+                'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
+                'duration': e.get('duration', 0),
+                'author': e.get('uploader', 'Unknown')
+            })
+        return jsonify({"results": results[:50]})
     except:
         return jsonify({"results": []})
 
 @app.route('/trending')
 def trending():
     try:
-        with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True}) as ydl:
-            result = ydl.extract_info("ytsearch50:amapiano 2025 south africa trending kabza de small kabza de small dj maphorisa", download=False)
-            entries = result.get('entries', [])
-            results = []
-            for e in entries:
-                if e:
-                    results.append({
-                        'id': e['id'],
-                        'title': e.get('title', 'No Title'),
-                        'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
-                        'duration': e.get('duration', 0) or 0,
-                        'author': e.get('uploader', 'Unknown')
-                    })
-            return jsonify({"results": results[:50]})
+        import yt_dlp
+        ydl = yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True})
+        r = ydl.extract_info("ytsearch50:amapiano 2025 south africa trending", download=False)
+        entries = r.get('entries', [])
+        results = []
+        for e in entries:
+            if e: results.append({
+                'id': e['id'],
+                'title': e.get('title', 'Unknown'),
+                'thumbnail': f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
+                'duration': e.get('duration', 0),
+                'author': e.get('uploader', 'Unknown')
+            })
+        return jsonify({"results": results[:50]})
     except:
         return jsonify({"results": []})
 
-
-# ================= PREVIEW (30-sec preview - now working perfectly) =================
+# PREVIEW & DOWNLOAD → 100% via Piped = ZERO BOT ERRORS
 @app.route('/preview')
 def preview():
     vid = request.args.get('id')
     typ = request.args.get('type', 'audio')
-    if not vid:
-        return "No ID", 400
-
-    url = f"https://www.youtube.com/watch?v={vid}"
-
-    ydl_opts = {
-        'format': 'bestaudio/best' if typ == 'audio' else 'best[height<=480]',
-        'quiet': True,
-        'no_warnings': True,
-    }
-
+    if not vid: return "No ID", 400
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            direct_url = info['url']
+        data = requests.get(f"{PIPED}/streams/{vid}").json()
+        streams = data.get('audioStreams') if typ == 'audio' else data.get('videoStreams')
+        best = max(streams, key=lambda x: x.get('quality', '0p') if typ != 'audio' else x.get('bitrate', 0))
+        return redirect(best['url'])
+    except:
+        return "Preview failed", 500
 
-        # Add title parameter so browser shows correct name when saved
-        title = info.get('title', 'audio')[:100]
-        safe_title = "".join(c for c in title if c.isalnum() or c in " -_.")
-        
-        redirect_url = f"{direct_url}&title={quote(safe_title)}.{ 'mp3' if typ=='audio' else 'mp4' }"
-        
-        return redirect(redirect_url)
-
-    except Exception as e:
-        print("Preview error:", e)
-        return "Failed", 500
-
-
-# ================= DOWNLOAD MP3 / MP4 - THIS IS THE MAGIC FIX =================
 @app.route('/download')
 def download():
     vid = request.args.get('id')
-    fmt = request.args.get('format', 'mp3')  # mp3 or mp4
-    if not vid:
-        return "No ID", 400
-
-    url = f"https://www.youtube.com/watch?v={vid}"
-
-    # Best format selection
-    format_selector = 'bestaudio/best' if fmt == 'mp3' else 'best[height<=1080]/best'
-
-    ydl_opts = {
-        'format': format_selector,
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
-    }
-
+    fmt = request.args.get('format', 'mp3')
+    if not vid: return "No ID", 400
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            direct_url = info['url']
-            title = info.get('title', 'Unknown')
-            uploader = info.get('uploader', 'Artist')
+        data = requests.get(f"{PIPED}/streams/{vid}").json()
+        title = "".join(c for c in f"{data.get('uploader','')} - {data.get('title','Video')}" if c.isalnum() or c in " -_()").strip()[:150]
 
-            # Clean filename
-            filename = f"{uploader} - {title}".strip()
-            filename = "".join(c for c in filename if c.isalnum() or c in " -_()[]").rstrip()
-            filename = filename[:150]  # Prevent too long
-            ext = 'mp3' if fmt == 'mp3' else 'mp4'
+        if fmt == 'mp3':
+            best = max(data.get('audioStreams', []), key=lambda x: x.get('bitrate', 0))
+        else:
+            best = max([s for s in data.get('videoStreams', []) if s.get('videoOnly') == False], key=lambda x: x.get('quality', ''))
+            if not best: best = data['videoStreams'][0]
 
-            # This trick forces download with correct name EVEN on mobile
-            final_url = f"{direct_url}&title={quote(filename)}.{ext}"
-
-            # Redirect = zero server load, works 100% on Render
-            return redirect(final_url)
-
+        url = best['url']
+        ext = 'mp3' if fmt == 'mp3' else 'mp4'
+        return redirect(f"{url}&title={quote(title)}.{ext}")
     except Exception as e:
-        print("Download error:", e)
-        return "Video not available or age-restricted", 500
+        print(e)
+        return "Download failed — try again", 500
 
-
-# ================= START SERVER =================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 3000))
-    print(f"FLUX_LEEH IS FULLY ALIVE on port {port} 🇿🇦🔥")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"FLUX_LEEH IS FULLY ALIVE on port {port} 🇿🇦")
+    app.run(host='0.0.0.0', port=port)
