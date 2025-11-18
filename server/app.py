@@ -3,10 +3,10 @@ import yt_dlp
 import os
 from urllib.parse import quote
 import requests
+from flask import send_from_directory
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# SERVE FRONTEND FILES — THIS IS THE FINAL FIX
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
@@ -80,31 +80,41 @@ def trending():
 @app.route('/preview')
 def preview():
     vid = request.args.get('id')
-    typ = request.args.get('type', 'audio')
+    typ = request.args.get('type', 'audio')  # audio or video
     if not vid:
-        return "No video ID", 400
+        return "No ID", 400
 
     url = f"https://www.youtube.com/watch?v={vid}"
-    format_selector = 'bestaudio' if typ == 'audio' else 'best[height<=480]'
 
     ydl_opts = {
-        'format': format_selector,
+        'format': 'bestaudio' if typ == 'audio' else 'best[height<=480]',
         'quiet': True,
         'no_warnings': True,
+        'noplaylist': True,
     }
 
-    def stream():
+    try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             direct_url = info['url']
-            r = requests.get(direct_url, stream=True)
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
 
-    mimetype = 'audio/mpeg' if typ == 'audio' else 'video/mp4'
-    return Response(stream(), mimetype=mimetype)
+        def generate():
+            with requests.get(direct_url, stream=True, timeout=20) as r:
+                r.raise_for_status()
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
 
+        resp = Response(generate(), mimetype='audio/mpeg' if typ == 'audio' else 'video/mp4')
+        resp.headers['Accept-Ranges'] = 'bytes'
+        resp.headers['Content-Length'] = info.get('filesize') or ''
+        resp.headers['Cache-Control'] = 'no-cache'
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+
+    except Exception as e:
+        print("Preview error:", e)
+        return "Stream failed", 500
 # ================= DOWNLOAD (MP3 or MP4) =================
 @app.route('/download')
 def download():
