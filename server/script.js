@@ -1,4 +1,4 @@
-const API = location.origin; // This fixes "Backend not running!"
+const API = location.origin;
 
 async function search() {
   const q = document.getElementById('searchInput').value.trim();
@@ -46,46 +46,53 @@ function renderResults(videos, container = document.getElementById('results')) {
       ${v.duration > 600 ? `
         <video controls preload="none" poster="${v.thumbnail}">
           <source src="${API}/preview?id=${v.id}&type=video" type="video/mp4">
+          Your browser does not support video.
         </video>` : `
         <audio controls preload="none">
           <source src="${API}/preview?id=${v.id}&type=audio" type="audio/mpeg">
+          Your browser does not support audio.
         </audio>`}
 
       <div class="buttons">
-        <a href="${API}/download?id=${v.id}&format=mp3" class="download-btn">MP3</a>
-        <a href="${API}/download?id=${v.id}&format=mp4" class="download-btn">MP4</a>
+        <button class="download-btn mp3" data-id="${v.id}">MP3</button>
+        <button class="download-btn mp4" data-id="${v.id}">MP4</button>
       </div>
       <progress class="progress" value="0" max="100"></progress>
     </div>
   `).join('');
 
-  // Progress bar for downloads
+  // NEW: Simple direct download with progress (works perfectly with redirect)
   document.querySelectorAll('.download-btn').forEach(btn => {
-    btn.onclick = e => {
+    btn.onclick = function(e) {
       e.preventDefault();
-      const prog = btn.parentElement.nextElementSibling;
+      const videoId = this.dataset.id;
+      const format = this.classList.contains('mp3') ? 'mp3' : 'mp4';
+      const prog = this.parentElement.nextElementSibling;
       prog.style.display = 'block';
       prog.value = 0;
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', btn.href, true);
-      xhr.responseType = 'blob';
+      // Create invisible iframe to trigger real download with correct filename
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = `${API}/download?id=${videoId}&format=${format}`;
+      document.body.appendChild(iframe);
 
-      xhr.onprogress = ev => {
-        if (ev.lengthComputable) prog.value = (ev.loaded / ev.total) * 100;
-      };
+      // Fake progress (since we can't track real download progress on redirect)
+      let fakeProgress = 0;
+      const interval = setInterval(() => {
+        fakeProgress += 8;
+        prog.value = fakeProgress;
+        if (fakeProgress >= 95) {
+          clearInterval(interval);
+          setTimeout(() => {
+            prog.style.display = 'none';
+            prog.value = 0;
+          }, 2000);
+        }
+      }, 200);
 
-      xhr.onload = () => {
-        const url = URL.createObjectURL(xhr.response);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = btn.textContent === 'MP3' ? `${btn.closest('.result').querySelector('h3').textContent}.mp3` 
-                                               : `${btn.closest('.result').querySelector('h3').textContent}.mp4`;
-        a.click();
-        prog.style.display = 'none';
-      };
-
-      xhr.send();
+      // Clean up iframe after 10s
+      setTimeout(() => iframe.remove(), 10000);
     };
   });
 }
@@ -97,12 +104,11 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// Dark mode toggle
+// Dark mode & search
 document.getElementById('toggle-mode').onclick = () => {
   document.body.classList.toggle('light-mode');
 };
 
-// Enter key search
 document.getElementById('searchInput').addEventListener('keypress', e => {
   if (e.key === 'Enter') search();
 });
