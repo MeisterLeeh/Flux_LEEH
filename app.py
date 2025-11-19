@@ -1,169 +1,170 @@
-from flask import Flask, request, redirect, send_from_directory, jsonify
+from flask import Flask, request, jsonify, send_file
 import requests
-import random
+import tempfile
 import os
 
-app = Flask(__name__, static_folder='static', static_url_path='')
+app = Flask(__name__)
 
-# Cloud-friendly Invidious servers (these work on Render) — kept as fallback for API calls
-INVIDIOUS_INSTANCES = [
-    "https://invidious.nerdvpn.de",
-    "https://yt.drgnz.club",
-    "https://invidious.tiekoetter.com",
-    "https://invidious.fdn.fr",
-    "https://inv.nadeko.net",
-    "https://invidious.asir.dev",
-    "https://iv.ggtyler.dev",
-    "https://invidious.privacyredirect.com"
-]
+PIPED_API = "https://pipedapi.kavin.rocks"
 
 
-def pick_invidious():
-    """Pick a working Invidious server – safe for Render deployment."""
-    random.shuffle(INVIDIOUS_INSTANCES)
-    for url in INVIDIOUS_INSTANCES:
-        try:
-            r = requests.get(url + "/api/v1/stats", timeout=4)
-            if r.status_code == 200:
-                return url
-        except Exception:
-            pass
-    return INVIDIOUS_INSTANCES[0]  # fallback
-
-
-@app.route("/")
-def home():
-    return send_from_directory("static", "index.html")
-
-
-@app.route("/sw.js")
-def service_worker():
-    # Serve the service worker so browsers accept it
-    return send_from_directory("static", "sw.js", mimetype="application/javascript")
-
-
-@app.route("/<path:filename>")
-def static_files(filename):
-    return send_from_directory("static", filename)
-
-
+# -----------------------------------------------------
+# SEARCH (returns 20 results)
+# -----------------------------------------------------
 @app.route("/search")
 def search():
-    instance = pick_invidious()
     q = request.args.get("q", "").strip()
-
     if not q:
         return jsonify({"results": []})
 
     try:
-        r = requests.get(f"{instance}/api/v1/search", params={"q": q}, timeout=10)
+        r = requests.get(
+            f"{PIPED_API}/search",
+            params={"q": q},
+            timeout=10
+        )
         data = r.json()
-        results = []
 
-        for v in data[:40]:
-            # Some Invidious instances return different shapes; guard defensively
-            video_id = v.get("videoId") or v.get("id")
-            if video_id:
-                thumb = None
-                if v.get("videoThumbnails"):
-                    thumb = v["videoThumbnails"][-1].get("url")
-                results.append({
-                    "id": video_id,
-                    "title": v.get("title") or v.get("videoTitle") or "Unknown",
-                    "author": v.get("author") or v.get("uploader") or "Unknown",
-                    "duration": int(v.get("lengthSeconds") or v.get("duration") or 0),
-                    "thumbnail": thumb or "logo.jpg"
-                })
+        results = []
+        for v in data[:20]:  # LIMIT TO 20 RESULTS
+            if v.get("type") != "stream":
+                continue
+
+            vid = v.get("url", "").replace("/watch?v=", "")
+            thumb = v.get("thumbnail")
+
+            results.append({
+                "id": vid,
+                "title": v.get("title", "Unknown"),
+                "author": v.get("uploader", "Unknown"),
+                "duration": v.get("duration", 0),
+                "thumbnail": thumb or "logo.jpg",
+            })
 
         return jsonify({"results": results})
-    except Exception:
+
+    except Exception as e:
+        print("SEARCH ERROR:", e)
         return jsonify({"results": []})
 
 
+# -----------------------------------------------------
+# TRENDING (TOP 10)
+# -----------------------------------------------------
 @app.route("/trending")
 def trending():
-    instance = pick_invidious()
     try:
-        # request region-specific trending if the instance supports it
-        r = requests.get(f"{instance}/api/v1/trending", timeout=10)
+        r = requests.get(f"{PIPED_API}/trending", timeout=10)
         data = r.json()
-        results = []
 
-        for v in data[:30]:
-            video_id = v.get("videoId") or v.get("id")
-            if video_id:
-                thumb = None
-                if v.get("videoThumbnails"):
-                    thumb = v["videoThumbnails"][-1].get("url")
-                results.append({
-                    "id": video_id,
-                    "title": v.get("title") or v.get("videoTitle") or "Unknown",
-                    "author": v.get("author") or v.get("uploader") or "Unknown",
-                    "duration": int(v.get("lengthSeconds") or v.get("duration") or 0),
-                    "thumbnail": thumb or "logo.jpg"
-                })
+        results = []
+        for v in data[:10]:  # LIMIT TO TOP 10
+            vid = v.get("url", "").replace("/watch?v=", "")
+            thumb = v.get("thumbnail")
+
+            results.append({
+                "id": vid,
+                "title": v.get("title", "Unknown"),
+                "author": v.get("uploader", "Unknown"),
+                "duration": v.get("duration", 0),
+                "thumbnail": thumb or "logo.jpg",
+            })
 
         return jsonify({"results": results})
-    except Exception:
+
+    except Exception as e:
+        print("TRENDING ERROR:", e)
         return jsonify({"results": []})
 
 
-@app.route("/preview")
-def preview():
-    # In many hosts invidious direct video proxying is blocked.
-    # Redirect users to the official YouTube watch page instead
-    vid = request.args.get("id")
-    if not vid:
-        return "Missing video ID", 400
-
-    return redirect(f"https://www.youtube.com/watch?v={vid}")
-
-
-@app.route("/download")
-def download():
-    vid = request.args.get("id")
-    fmt = request.args.get("format", "mp3")
-
-    if not vid:
-        return "Missing video ID", 400
-
-    instance = pick_invidious()
+# -----------------------------------------------------
+# VIDEO INFO (preview page)
+# -----------------------------------------------------
+@app.route("/info")
+def info():
+    video_id = request.args.get("id", "")
+    if not video_id:
+        return jsonify({"error": "missing video id"})
 
     try:
-        info = requests.get(f"{instance}/api/v1/videos/{vid}", timeout=10)
-        info = info.json()
+        r = requests.get(f"{PIPED_API}/streams/{video_id}", timeout=10)
+        data = r.json()
+        return jsonify(data)
 
-        # Build safe filename
-        title = "".join(c for c in f"{info.get('author','')} - {info.get('title','Video')}"
-                        if c.isalnum() or c in " -_()[]").strip()[:150]
+    except Exception as e:
+        print("INFO ERROR:", e)
+        return jsonify({"error": "failed to get info"})
 
-        # Select stream
-        streams = info.get("formatStreams", [])
-        if not streams:
-            return "No streams available", 503
 
-        if fmt == "mp3":
-            audio = [s for s in streams if "audio" in s.get("type", "")]
-            stream = max(audio, key=lambda x: int(x.get("bitrate", 0)), default=streams[0])
-        else:
-            video = [s for s in streams if "video" in s.get("type", "") or "video/mp4" in s.get("type", "")]
-            def qkey(x):
-                q = x.get("quality", "")
-                if isinstance(q, str) and "p" in q:
-                    try:
-                        return int(q.split("p")[0])
-                    except Exception:
-                        return 0
-                return 0
-            stream = max(video, key=qkey, default=streams[0])
+# -----------------------------------------------------
+# DOWNLOAD MP3
+# -----------------------------------------------------
+@app.route("/download/mp3")
+def download_mp3():
+    video_id = request.args.get("id", "")
+    if not video_id:
+        return jsonify({"error": "missing video id"})
 
-        # Redirect the client to the stream URL. Many browsers block cross-site downloads with filename headers.
-        return redirect(stream.get('url'))
+    try:
+        data = requests.get(f"{PIPED_API}/streams/{video_id}", timeout=10).json()
 
-    except Exception:
-        return "Error – Try again", 503
+        # Find best audio stream
+        audio = None
+        for a in data.get("audioStreams", []):
+            if "mp4" in a.get("mimeType", "") or "webm" in a.get("mimeType", ""):
+                audio = a
+                break
+
+        if not audio:
+            return jsonify({"error": "no audio stream found"})
+
+        # Download audio to temp file
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        content = requests.get(audio["url"], stream=True).content
+        temp.write(content)
+        temp.close()
+
+        return send_file(temp.name, as_attachment=True, download_name="audio.mp3")
+
+    except Exception as e:
+        print("MP3 DOWNLOAD ERROR:", e)
+        return jsonify({"error": "mp3 download failed"})
+
+
+# -----------------------------------------------------
+# DOWNLOAD MP4
+# -----------------------------------------------------
+@app.route("/download/mp4")
+def download_mp4():
+    video_id = request.args.get("id", "")
+    if not video_id:
+        return jsonify({"error": "missing video id"})
+
+    try:
+        data = requests.get(f"{PIPED_API}/streams/{video_id}", timeout=10).json()
+
+        # Pick best quality (highest resolution)
+        video = None
+        streams = sorted(data.get("videoStreams", []), key=lambda x: x.get("quality", ""), reverse=True)
+
+        if streams:
+            video = streams[0]
+
+        if not video:
+            return jsonify({"error": "no video stream found"})
+
+        # Download to temp file
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        content = requests.get(video["url"], stream=True).content
+        temp.write(content)
+        temp.close()
+
+        return send_file(temp.name, as_attachment=True, download_name="video.mp4")
+
+    except Exception as e:
+        print("MP4 DOWNLOAD ERROR:", e)
+        return jsonify({"error": "mp4 download failed"})
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
