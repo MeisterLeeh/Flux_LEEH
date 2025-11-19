@@ -6,7 +6,7 @@ import os
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 # ---------- FIXED (working Piped instance) ----------
-PIPED_API = "https://pipedapi.video"   # SUPER stable mirror
+PIPED_API = "https://pipedapi.r4fo.com"
 
 
 # -----------------------------------------------------
