@@ -1,20 +1,14 @@
-:root { --p: #00d4ff; --s: #ff2a6d; --d: #0f0f0f; --l: #f8f9fa; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: Segoe UI, sans-serif; background:var(--d); color:#fff; padding:20px; transition:0.3s; }
-header { text-align:center; margin-bottom:30px; }
-h1 { font-size:3rem; background:linear-gradient(90deg,var(--p),var(--s)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.logo { height:80px; margin:15px auto; filter:drop-shadow(0 0 20px rgba(0,212,255,0.6)); }
-#toggle-mode { position:absolute; top:20px; right:20px; background:none; border:none; font-size:2rem; cursor:pointer; }
-.search-container { display:flex; max-width:700px; margin:20px auto; border-radius:50px; overflow:hidden; box-shadow:0 0 20px rgba(0,212,255,0.4); }
-#searchInput { flex:1; padding:16px 20px; font-size:18px; border:none; background:#222; color:#fff; }
-button { padding:16px 30px; background:var(--s); color:#fff; border:none; font-weight:bold; cursor:pointer; }
-.results-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; max-width:1200px; margin:0 auto; }
-.result { background:#1a1a1a; border-radius:12px; overflow:hidden; box-shadow:0 5px 15px rgba(0,0,0,0.5); }
-.thumbnail { width:100%; height:170px; object-fit:cover; }
-.result h3 { margin:12px 15px 5px; color:var(--p); }
-.buttons { padding:10px; text-align:center; }
-.download-btn { display:inline-block; margin:5px; padding:10px 20px; background:var(--p); color:#fff; text-decoration:none; border-radius:6px; }
-.download-btn:nth-child(2) { background:var(--s); }
-progress { width:90%; margin:10px auto; display:none; height:8px; }
-.light-mode { background:var(--l); color:#000; }
-.light-mode .result { background:#f0f0f0; }
+:root{--p:#00d4ff;--s:#ff2a6d;--d:#0f0f0f;--l:#f8f9fa}
+*{box-sizing:border-box}
+body{font-family:Segoe UI,Arial,sans-serif;background:var(--d);color:#fff;padding:20px}
+header{text-align:center;margin-bottom:20px}
+.logo{height:80px}
+.search-container{display:flex;max-width:700px;margin:10px auto}
+#searchInput{flex:1;padding:12px;border-radius:8px 0 0 8px;border:none}
+#searchBtn{padding:12px;border-radius:0 8px 8px 0;border:none;background:var(--p);color:#000}
+.results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;max-width:1200px;margin:10px auto}
+.result{background:#141414;padding:10px;border-radius:10px}
+.thumbnail{width:100%;height:150px;object-fit:cover;border-radius:6px}
+.buttons{display:flex;gap:8px;margin-top:8px}
+.download-btn{padding:8px 10px;border-radius:6px;text-decoration:none;background:var(--p);color:#000}
+.loading{padding:20px;text-align:center;color:#ddd}

@@ -1,89 +1,45 @@
 const API = location.origin;
 
-async function search() {
-    const q = document.getElementById('searchInput').value.trim();
-    if (!q) return;
-    const container = document.getElementById('results');
-    container.innerHTML = '<p class="loading">Searching...</p>';
-    try {
-        const res = await fetch(`${API}/search?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        renderResults(data.results || []);
-    } catch (err) {
-        container.innerHTML = '<p class="loading">Search failed. Try again.</p>';
-    }
+async function loadTrending(){
+  const el = document.getElementById('trending-results');
+  el.innerHTML = '<p class="loading">Loading...</p>';
+  try{
+    const r = await fetch(`${API}/trending`);
+    const d = await r.json();
+    renderList(d.results||[], el);
+  }catch(e){ el.innerHTML='<p class="loading">Failed to load</p>' }
 }
 
-function renderResults(videos) {
-    const container = document.getElementById('results');
-    if (!videos.length) {
-        container.innerHTML = '<p class="loading">No results found.</p>';
-        return;
-    }
-    container.innerHTML = videos.map(v => `
-        <div class="result">
-            <img src="${v.thumbnail}" class="thumbnail" alt="thumb">
-            <h3>${escapeHtml(v.title)}</h3>
-            <p>${escapeHtml(v.author)} • ${formatDuration(v.duration)}</p>
-            <div class="buttons">
-                <a href="${API}/download?id=${v.id}&format=mp3" class="download-btn mp3">MP3</a>
-                <a href="${API}/download?id=${v.id}&format=mp4" class="download-btn mp4">MP4</a>
-                <a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" class="download-btn">Preview</a>
-            </div>
-        </div>
-    `).join('');
+async function doSearch(q){
+  const el = document.getElementById('results');
+  el.innerHTML = '<p class="loading">Searching...</p>';
+  try{
+    const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    renderList(d.results||[], el);
+  }catch(e){ el.innerHTML='<p class="loading">Search failed</p>' }
 }
 
-function renderTrending(videos) {
-    const container = document.getElementById('trending-results');
-    if (!videos.length) {
-        container.innerHTML = '<p class="loading">No trending items.</p>';
-        return;
-    }
-    container.innerHTML = videos.map(v => `
-        <div class="result">
-            <img src="${v.thumbnail}" class="thumbnail" alt="thumb">
-            <h3>${escapeHtml(v.title)}</h3>
-            <p>${escapeHtml(v.author)} • ${formatDuration(v.duration)}</p>
-            <div class="buttons">
-                <a href="${API}/download?id=${v.id}&format=mp3" class="download-btn mp3">MP3</a>
-                <a href="${API}/download?id=${v.id}&format=mp4" class="download-btn mp4">MP4</a>
-                <a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" class="download-btn">Preview</a>
-            </div>
-        </div>
-    `).join('');
+function renderList(items, container){
+  if(!items.length){ container.innerHTML='<p class="loading">No results.</p>'; return }
+  container.innerHTML = items.map(i=>`
+    <div class="result">
+      <img class="thumbnail" src="${i.thumbnail}" alt="thumb">
+      <h3>${escape(i.title)}</h3>
+      <p>${escape(i.author)} • ${formatDuration(i.duration)}</p>
+      <div class="buttons">
+        <a class="download-btn" href="${API}/download?id=${i.id}&format=mp3">MP3</a>
+        <a class="download-btn" href="${API}/download?id=${i.id}&format=mp4">MP4</a>
+        <a class="download-btn" target="_blank" href="https://www.youtube.com/watch?v=${i.id}">Preview</a>
+      </div>
+    </div>
+  `).join('')
 }
 
-function formatDuration(sec) {
-    if (!sec) return "LIVE";
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${s.toString().padStart(2,'0')}`;
-}
+function formatDuration(sec){ if(!sec) return 'LIVE'; const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}` }
+function escape(s){ return (s||'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'})[c]) }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    return text.replace(/[&<>"']/g, function (c) {
-        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c];
-    });
-}
+document.getElementById('searchBtn').addEventListener('click',()=>{const q=document.getElementById('searchInput').value.trim(); if(q) doSearch(q)})
+document.getElementById('searchInput').addEventListener('keypress',e=>{ if(e.key==='Enter') document.getElementById('searchBtn').click() })
 
-// Enter key
-const input = document.getElementById('searchInput');
-if (input) {
-    input.addEventListener('keypress', e => {
-        if (e.key === 'Enter') search();
-    });
-}
-
-// Trending load
-fetch(`${API}/trending`).then(r => r.json()).then(d => renderTrending(d.results || [])).catch(()=>{});
-
-// Theme toggle (keeps your existing UI behaviour)
-const toggle = document.getElementById('toggle-mode');
-if (toggle) {
-    toggle.addEventListener('click', () => {
-        document.body.classList.toggle('light-mode');
-        toggle.textContent = document.body.classList.contains('light-mode') ? '☀️' : '🌙';
-    });
-}
+loadTrending();

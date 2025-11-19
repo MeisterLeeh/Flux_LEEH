@@ -1,37 +1,35 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#00d4ff">
-  <title>Flux_LEEH - Free Music & Video Downloads</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="manifest" href="manifest.json">
+  <title>Flux_LEEH</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
     <h1>Flux_LEEH</h1>
-    <img src="logo.jpg" alt="Logo" class="logo">
-    <p>Search & Download MP3/MP4 - Fast & Free</p>
-    <button id="toggle-mode">🌙</button>
+    <img src="/logo.jpg" alt="logo" class="logo">
+    <p>Search & Download MP3/MP4</p>
   </header>
-
   <main>
     <section id="trending">
-      <h2>New Releases in SA</h2>
+      <h2>Top 10 Trending (SA)</h2>
       <div id="trending-results" class="results-grid"></div>
     </section>
 
-    <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search songs, artists, videos..." autocomplete="off">
-      <button onclick="search()">GO</button>
-    </div>
-
-    <div id="results" class="results-grid"></div>
+    <section id="search-area">
+      <div class="search-container">
+        <input id="searchInput" placeholder="Search songs, artists, videos...">
+        <button id="searchBtn">Search</button>
+      </div>
+      <div id="results" class="results-grid"></div>
+    </section>
   </main>
+  <footer>© 2025 Flux_LEEH.za</footer>
 
-  <footer><p>© 2025 @Flux_LEEH.za</p></footer>
-
-  <script src="scripts.js"></script>
+  <script src="/scripts.js"></script>
 </body>
 </html>
