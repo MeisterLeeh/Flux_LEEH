@@ -5,7 +5,8 @@ import os
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
-PIPED_API = "https://pipedapi.kavin.rocks"
+# ---------- FIXED (working Piped instance) ----------
+PIPED_API = "https://pipedapi.video"   # SUPER stable mirror
 
 
 # -----------------------------------------------------
@@ -17,7 +18,7 @@ def home():
 
 
 # -----------------------------------------------------
-# STATIC FILES (style.css, scripts.js, images)
+# STATIC FILES
 # -----------------------------------------------------
 @app.route("/<path:filename>")
 def static_files(filename):
@@ -34,7 +35,7 @@ def search():
         return jsonify({"results": []})
 
     try:
-        r = requests.get(f"{PIPED_API}/search", params={"q": q}, timeout=10)
+        r = requests.get(f"{PIPED_API}/search", params={"q": q}, timeout=15)
         data = r.json()
 
         results = []
@@ -50,12 +51,13 @@ def search():
                 "title": v.get("title", "Unknown"),
                 "author": v.get("uploader", "Unknown"),
                 "duration": v.get("duration", 0),
-                "thumbnail": thumb or "logo.jpg",
+                "thumbnail": thumb or "/logo.jpg",
             })
 
         return jsonify({"results": results})
 
-    except:
+    except Exception as e:
+        print("SEARCH ERROR:", e)
         return jsonify({"results": []})
 
 
@@ -65,7 +67,7 @@ def search():
 @app.route("/trending")
 def trending():
     try:
-        r = requests.get(f"{PIPED_API}/trending", timeout=10)
+        r = requests.get(f"{PIPED_API}/trending", timeout=15)
         data = r.json()
 
         results = []
@@ -78,17 +80,18 @@ def trending():
                 "title": v.get("title", "Unknown"),
                 "author": v.get("uploader", "Unknown"),
                 "duration": v.get("duration", 0),
-                "thumbnail": thumb or "logo.jpg",
+                "thumbnail": thumb or "/logo.jpg",
             })
 
         return jsonify({"results": results})
 
-    except:
+    except Exception as e:
+        print("TRENDING ERROR:", e)
         return jsonify({"results": []})
 
 
 # -----------------------------------------------------
-# PREVIEW (Open YouTube or Piped)
+# PREVIEW (redirect to YouTube)
 # -----------------------------------------------------
 @app.route("/preview")
 def preview():
@@ -108,11 +111,11 @@ def download_mp3():
         return jsonify({"error": "missing video id"})
 
     try:
-        data = requests.get(f"{PIPED_API}/streams/{vid}", timeout=10).json()
+        data = requests.get(f"{PIPED_API}/streams/{vid}", timeout=15).json()
 
         audio = None
         for a in data.get("audioStreams", []):
-            if "mp4" in a.get("mimeType", "") or "webm" in a.get("mimeType", ""):
+            if "audio" in a.get("mimeType", "").lower():
                 audio = a
                 break
 
@@ -120,13 +123,14 @@ def download_mp3():
             return jsonify({"error": "no audio stream found"})
 
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        content = requests.get(audio["url"], stream=True).content
-        temp.write(content)
+        with requests.get(audio["url"], stream=True, timeout=15) as stream:
+            temp.write(stream.content)
         temp.close()
 
         return send_file(temp.name, as_attachment=True, download_name="audio.mp3")
 
-    except:
+    except Exception as e:
+        print("MP3 ERROR:", e)
         return jsonify({"error": "mp3 failed"})
 
 
@@ -140,11 +144,11 @@ def download_mp4():
         return jsonify({"error": "missing video id"})
 
     try:
-        data = requests.get(f"{PIPED_API}/streams/{vid}", timeout=10).json()
+        data = requests.get(f"{PIPED_API}/streams/{vid}", timeout=15).json()
 
         streams = sorted(
             data.get("videoStreams", []),
-            key=lambda x: x.get("quality", ""),
+            key=lambda x: int(x.get("quality", "0p").replace("p", "")),
             reverse=True
         )
 
@@ -154,16 +158,20 @@ def download_mp4():
         best = streams[0]
 
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        content = requests.get(best["url"], stream=True).content
-        temp.write(content)
+        with requests.get(best["url"], stream=True, timeout=15) as stream:
+            temp.write(stream.content)
         temp.close()
 
         return send_file(temp.name, as_attachment=True, download_name="video.mp4")
 
-    except:
+    except Exception as e:
+        print("MP4 ERROR:", e)
         return jsonify({"error": "mp4 failed"})
 
 
+# -----------------------------------------------------
+# RUN
+# -----------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
